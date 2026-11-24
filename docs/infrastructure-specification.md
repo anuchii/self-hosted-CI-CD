@@ -83,7 +83,7 @@ flowchart TB
 - **Option A:** Alle Server in einem einzigen öffentlichen Subnetz, Schutz nur über Security Groups.
 - **Option B1:** Aufbau wie B2, aber mit einem verwalteten NAT Gateway statt NAT-Instanz.
 
-**Begründung:** Im privaten Subnetz sind DNS, LDAP und Runner aus dem Internet grundsätzlich nicht erreichbar. Zusammen mit den Security Groups haben wir damit zwei Schutzschichten statt einer. Ein NAT Gateway kommt nicht in Frage: Es kostet auch ohne Nutzung Geld und lässt sich nicht ausschalten, in acht Wochen wären das allein ca. 60 $, mehr als unser Budget von 50 $. Eine NAT-Instanz wird dagegen wie die anderen Server gestoppt, wenn wir nicht arbeiten, und kostet kaum mehr als Option A. Den höheren Aufwand (NAT-Instanz einrichten, SSH-Zugang über einen Jump Host) nehmen wir für die bessere Sicherheit in Kauf.
+**Begründung:** Im privaten Subnetz sind DNS, LDAP und Runner aus dem Internet grundsätzlich nicht erreichbar. Zusammen mit den Security Groups haben wir damit zwei Schutzschichten statt einer. Ein NAT Gateway kommt nicht in Frage: Es kostet auch ohne Nutzung Geld und lässt sich nicht ausschalten, in acht Wochen wären das allein ca. 60 \$, mehr als unser Budget von 50 $. Eine NAT-Instanz wird dagegen wie die anderen Server gestoppt, wenn wir nicht arbeiten, und kostet kaum mehr als Option A. Den höheren Aufwand (NAT-Instanz einrichten, SSH-Zugang über einen Jump Host) nehmen wir für die bessere Sicherheit in Kauf.
 
 **Bekannte Nachteile:** Die NAT-Instanz ist ein Single Point of Failure. Läuft sie nicht, haben die privaten Server keinen Internetzugang (zB keine Updates, keine Docker-Images für den Runner).
 
@@ -151,7 +151,7 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 | Automatische IP (NAT-Instanz) | nur während die Instanz läuft | 80 h × 0,005 $ | ca. 0,40 $ |
 | **Summe** | | | **ca. 7,10 $** |
 
-Mit der Elastic IP steigen die geschätzten Gesamtkosten von Option B2 von ca. 20 $ auf ca. 26 $ (ca. 52 % des Budgets). Diesen Aufpreis nehmen wir für eine stabile Adresse in Kauf.
+Mit der Elastic IP steigen die geschätzten Gesamtkosten von Option B2 von ca. 20 \$ auf ca. 26 $ (ca. 52 % des Budgets). Diesen Aufpreis nehmen wir für eine stabile Adresse in Kauf.
 
 **Kostenoptimierung:**
 - Die Elastic IP wird erst beim Aufbau von GitLab in M2 angelegt und nach der Abschlusspräsentation sofort freigegeben.
@@ -429,56 +429,65 @@ Wir nutzen nur das kostenlose Basic Monitoring von CloudWatch. Es ist für alle 
 
 ## 5. Geplante Tests
 
-> 📝 **Aufgabe – Milestone „M1: Service checks/tests planned“** · ein Issue pro Bereich _(Nummern nach dem Anlegen eintragen)_
-> Vorschläge prüfen, anpassen und konkrete Befehle eintragen.
+Die folgenden Tests prüfen, ob jeder Dienst unserer Infrastruktur wie gefordert funktioniert. Sie sind nach Bereichen gegliedert (Netzwerk, DNS, LDAP, GitLab, Runner) und werden beim Aufbau in M2 und M3 durchgeführt. Die LDAP-Tests (5.3) folgen erst in M3, weil der LDAP-Server erst dann aufgebaut wird.
 
-### 5.1 Netzwerk _(Vorschlag – prüfen)_
-> 📝 Issue **#___ – Plan network tests** 
+Jeder Test hat eine Kennung (N = Netzwerk, D = DNS, L = LDAP, G = GitLab, R = Runner), ein Vorgehen mit konkretem Befehl und ein erwartetes Ergebnis. Ein Test gilt als bestanden, wenn das tatsächliche Ergebnis dem erwarteten entspricht. Befehle auf den privaten Servern werden über den Jump Host (GitLab, siehe Abschnitt 3) ausgeführt. Platzhalter in spitzen Klammern, zB `<Elastic-IP>`, werden beim Test durch die aktuellen Werte ersetzt.
 
-| # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
-|---|---|---|---|
-| N1 | Server erreichen sich intern | _zB `ping` von runner zu gitlab_ | Antwort erhalten |
-| N2 | Interne Dienste von außen gesperrt | Verbindung von außen auf DNS- bzw. LDAP-Port | Verbindung schlägt fehl |
-| N3 | GitLab aus dem Internet erreichbar | GitLab-URL im Browser öffnen | Login-Seite erscheint |
-
-### 5.2 DNS _(Vorschlag – prüfen)_
-> 📝 Issue **#___ – Plan DNS and LDAP tests** 
+### 5.1 Netzwerk
 
 | # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
 |---|---|---|---|
-| D1 | Forward Lookup | `dig gitlab.<domain> @ns1.<domain>` | Private IP von gitlab |
-| D2 | Reverse Lookup | `dig -x <IP von gitlab>` | `gitlab.<domain>` |
-| D3 | Lookups von jedem Server | D1 und D2 auf allen Servern | Gleiche Antworten überall |
-| D4 | Zone Transfer | Eintrag auf ns1 ändern, Serial erhöhen, dann `dig <name> @ns2.<domain>` | ns2 kennt die Änderung |
-| D5 | Failover | ns1 stoppen, dann `dig gitlab.<domain>` | Antwort kommt von ns2 |
-| D6 | Externe Namen | `dig www.technikum-wien.at` | Öffentliche IP wird aufgelöst |
+| N1 | Server erreichen sich intern | Auf runner einloggen (`ssh -J ubuntu@<Elastic-IP> ubuntu@10.0.2.30`), dann `ping -c 3 gitlab.team02.internal` und `ping -c 3` auf die übrigen Server (IPs aus Abschnitt 2.3). Danach von gitlab aus `ping -c 3 10.0.2.30` | Alle Pings: `3 received, 0% packet loss`, Antwort von der erwarteten privaten IP |
+| N2 | Interne Dienste von außen gesperrt | Vom Laptop (außerhalb der VPC): `nc -zv -w 5 <Elastic-IP> 53` und `nc -zv -w 5 <Elastic-IP> 389`. Zusätzlich in der AWS-Konsole prüfen, dass ns1, ns2, ldap und runner keine öffentliche IPv4-Adresse haben | Beide `nc`-Befehle enden im Timeout (kein `succeeded`), die privaten Server haben keine öffentliche IP |
+| N3 | GitLab aus dem Internet erreichbar | Auf dem Laptop `<Elastic-IP> gitlab.team02.internal` in die `hosts`-Datei eintragen (siehe 4.4). Dann im Browser `http://gitlab.team02.internal` öffnen und `curl -I http://gitlab.team02.internal/users/sign_in` ausführen | Login-Seite erscheint, `curl` liefert `HTTP/1.1 200 OK` |
 
-### 5.3 LDAP _(Vorschlag – prüfen, Umsetzung in M3)_
-> 📝 Issue **#___ – Plan DNS and LDAP tests** 
+### 5.2 DNS
 
 | # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
 |---|---|---|---|
-| L1 | LDAP-Suche | `ldapsearch -x -H ldap://ldap.<domain> -b "<Base DN>"` | Einträge werden aufgelistet |
-| L2 | Login in GitLab über LDAP | Anmeldung in GitLab mit LDAP-Benutzer | Login erfolgreich |
+| D1 | Forward Lookup | `dig +short gitlab.team02.internal @10.0.2.10` | `10.0.1.20` |
+| D2 | Reverse Lookup | `dig +short -x 10.0.1.20 @10.0.2.10` und `dig +short -x 10.0.2.10 @10.0.2.10` (je ein Server aus beiden Reverse-Zonen) | `gitlab.team02.internal.` bzw. `ns1.team02.internal.` |
+| D3 | Lookups von jedem Server | Auf nat, gitlab, ns1, ns2 und runner (ab M3 auch ldap): `for h in nat gitlab ns1 ns2 runner; do dig +short $h.team02.internal; done` und `for ip in 10.0.1.10 10.0.1.20 10.0.2.10 10.0.2.11 10.0.2.30; do dig +short -x $ip; done` | Auf jedem Server dieselben Antworten: die IPs aus Abschnitt 2.3, bei Reverse die Namen mit Punkt am Ende |
+| D4 | Zone Transfer | Auf ns1 in der Zonendatei von `team02.internal` den Testeintrag `test IN A 10.0.2.99` ergänzen, die Seriennummer um 1 erhöhen und mit `sudo rndc reload` neu laden. Dann `dig +short test.team02.internal @10.0.2.11` ausführen und `dig +short team02.internal SOA @10.0.2.10` mit `@10.0.2.11` vergleichen. Testeintrag danach wieder entfernen | ns2 liefert `10.0.2.99`, die SOA-Zeile (mit der Seriennummer) ist auf ns1 und ns2 identisch |
+| D5 | Failover | ns1 in der AWS-Konsole stoppen (Instance state → Stop instance). Auf runner `dig +short gitlab.team02.internal` und `resolvectl status` ausführen. Danach ns1 wieder starten | Die Antwort `10.0.1.20` kommt trotzdem (evtl. wenige Sekunden verzögert), `resolvectl status` zeigt als Current DNS Server `10.0.2.11` (ns2) |
+| D6 | Externe Namen | `dig +short www.technikum-wien.at @10.0.2.10` und `dig +short www.technikum-wien.at @10.0.2.11` | Beide DNS-Server liefern eine öffentliche IPv4-Adresse (Forwarder Google DNS über die NAT-Instanz) |
 
-### 5.4 GitLab _(Vorschlag – prüfen)_
-> 📝 Issue **#___ – Plan GitLab tests** 
+**Voraussetzung:** Das Paket `dnsutils` (enthält `dig`) muss auf jedem Server installiert sein, auf dem getestet wird (`sudo apt install dnsutils`).
 
-| # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
-|---|---|---|---|
-| G1 | Login | Anmeldung im Browser | Dashboard erscheint |
-| G2 | Repository anlegen | Neues Projekt in der Weboberfläche | Projekt existiert |
-| G3 | Clone vom Laptop | `git clone <URL>` | Repo lokal vorhanden |
-| G4 | Push vom Laptop | Datei ändern, `git push` | Änderung in GitLab sichtbar |
-| G5 | Container Registry | `docker login <Registry-URL>` | Login Succeeded |
-
-### 5.5 Runner _(Vorschlag – prüfen)_
-> 📝 Issue **#___ – Plan Runner tests** 
+### 5.3 LDAP
 
 | # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
 |---|---|---|---|
-| R1 | Registrierung | Runner über `gitlab.<domain>` registrieren | Runner in GitLab als online sichtbar |
-| R2 | Test-Job | Minimale `.gitlab-ci.yml` mit einem `echo`-Job pushen | Job läuft auf dem eigenen Runner und ist grün |
+| L1 | LDAP-Suche | Auf gitlab: `ldapsearch -x -H ldap://ldap.team02.internal -b "ou=people,dc=team02,dc=internal" "(uid=*)"` | Die Testbenutzer werden als `dn: uid=...,ou=people,dc=team02,dc=internal` aufgelistet, am Ende steht `# numEntries: <Anzahl>` |
+| L2 | LDAP-Bind (Anmeldung am Verzeichnis) | Auf gitlab: `ldapwhoami -x -H ldap://ldap.team02.internal -D "uid=<Testbenutzer>,ou=people,dc=team02,dc=internal" -W`, einmal mit richtigem und einmal mit falschem Passwort | Richtiges Passwort: `dn:uid=<Testbenutzer>,ou=people,dc=team02,dc=internal`. Falsches Passwort: `ldap_bind: Invalid credentials (49)` |
+| L3 | GitLab erreicht LDAP über den DNS-Namen | In `/etc/gitlab/gitlab.rb` prüfen, dass bei `host` der Name `ldap.team02.internal` steht (keine IP). Dann auf gitlab `sudo gitlab-rake gitlab:ldap:check` ausführen | Die Prüfung meldet eine erfolgreiche Verbindung und listet LDAP-Benutzer auf |
+| L4 | Login in GitLab über LDAP | Im Browser `http://gitlab.team02.internal` öffnen, den Tab **LDAP** wählen und mit `<Testbenutzer>` anmelden. Danach unter Admin → Users nachsehen | Login erfolgreich, Dashboard erscheint, der Benutzer ist in der Benutzerliste angelegt. Mit falschem Passwort schlägt der Login fehl |
+
+**Voraussetzung:** Auf gitlab muss das Paket `ldap-utils` installiert sein (`sudo apt install ldap-utils`). L1 und L2 laufen auf gitlab, weil Port 389 laut `sg-ldap` nur für die Security Group von GitLab offen ist.
+
+### 5.4 GitLab
+
+| # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
+|---|---|---|---|
+| G1 | Login | Auf dem Laptop `<Elastic-IP> gitlab.team02.internal` in der `hosts`-Datei eintragen (siehe 4.4). Im Browser `http://gitlab.team02.internal` öffnen und als Administrator `root` anmelden | Dashboard erscheint |
+| G2 | Repository anlegen | In der Weboberfläche *New project → Create blank project*, Name `<Projekt>` | Projekt erscheint in der Projektliste und hat eine eigene Seite |
+| G3 | Clone vom Laptop | `git clone http://gitlab.team02.internal/<Gruppe>/<Projekt>.git` | Ordner `<Projekt>` ist lokal vorhanden |
+| G4 | Push vom Laptop | Im geklonten Ordner: `echo "test" > test.txt`, dann `git add test.txt`, `git commit -m "test"` und `git push` | `git push` endet ohne Fehler, `test.txt` ist in der GitLab-Weboberfläche sichtbar |
+| G5 | Container Registry: Anmeldung | Auf dem Laptop `gitlab.team02.internal:5050` in Docker als insecure registry eintragen (siehe 4.4), dann `docker login gitlab.team02.internal:5050` mit GitLab-Benutzer und Passwort (oder Personal Access Token mit `write_registry`) | `Login Succeeded` |
+| G6 | Container Registry: Image hochladen | `docker pull alpine`, `docker tag alpine gitlab.team02.internal:5050/<Gruppe>/<Projekt>/alpine:test` und `docker push gitlab.team02.internal:5050/<Gruppe>/<Projekt>/alpine:test` | Push endet ohne Fehler, das Image `alpine:test` ist in GitLab unter *Deploy → Container Registry* sichtbar |
+| G7 | GitLab-Dienste laufen | Auf gitlab: `sudo gitlab-ctl status` | Alle Dienste (zB `puma`, `nginx`, `postgresql`, `registry`) stehen auf `run:` |
+
+**Voraussetzung:** Der Laptop braucht Git und Docker sowie den `hosts`-Eintrag aus G1. `<Gruppe>` und `<Projekt>` werden beim Anlegen in G2 festgelegt.
+
+### 5.5 Runner
+
+| # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
+|---|---|---|---|
+| R1 | Registrierung über den internen DNS-Namen | Auf runner: `dig +short gitlab.team02.internal`. Runner in der GitLab-Oberfläche anlegen (Admin-Bereich → CI/CD → Runners → neuer Runner) und mit dem erzeugten Token registrieren: `sudo gitlab-runner register --non-interactive --url http://gitlab.team02.internal --token <Runner-Token> --executor docker --docker-image alpine:latest`. Danach `sudo gitlab-runner verify` und `grep url /etc/gitlab-runner/config.toml` | `dig` liefert `10.0.1.20`. Registrierung meldet `Runner registered successfully`, `verify` meldet `is valid`, in `config.toml` steht der DNS-Name statt einer IP. In GitLab ist der Runner als online sichtbar |
+| R2 | Test-Job läuft auf dem eigenen Runner | Im Testprojekt aus G2 eine `.gitlab-ci.yml` mit dem Inhalt `test-job: { script: ["echo Hallo vom Runner"] }` pushen. Danach in GitLab unter *Build → Pipelines* den Job öffnen | Pipeline startet automatisch, der Job ist grün (`passed`), im Log steht `Hallo vom Runner`, und der Kopf des Logs nennt den eigenen Runner |
+| R3 | Docker-in-Docker funktioniert | In `/etc/gitlab-runner/config.toml` prüfen, dass `privileged = true` steht. Im Testprojekt einen Job mit `image: docker`, `services: [docker:dind]` und dem Befehl `docker info` pushen (Konfiguration laut GitLab-Dokumentation zu Docker-in-Docker, siehe 4.5) | Job ist grün, `docker info` zeigt Serverinformationen statt `Cannot connect to the Docker daemon` |
+
+**Voraussetzung:** Auf runner sind `gitlab-runner` und Docker installiert (siehe 4.5), und GitLab läuft (Tests aus 5.4). Für R2 und R3 braucht der Runner Internet über die NAT-Instanz, weil er die Job-Images (`alpine`, `docker`) herunterlädt.
 
 ---
 
