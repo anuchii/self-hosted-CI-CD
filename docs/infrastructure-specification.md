@@ -85,7 +85,7 @@ flowchart TB
 
 **Begründung:** Im privaten Subnetz sind DNS, LDAP und Runner aus dem Internet grundsätzlich nicht erreichbar. Zusammen mit den Security Groups haben wir damit zwei Schutzschichten statt einer. Ein NAT Gateway kommt nicht in Frage: Es kostet auch ohne Nutzung Geld und lässt sich nicht ausschalten, in acht Wochen wären das allein ca. 60 $, mehr als unser Budget von 50 $. Eine NAT-Instanz wird dagegen wie die anderen Server gestoppt, wenn wir nicht arbeiten, und kostet kaum mehr als Option A. Den höheren Aufwand (NAT-Instanz einrichten, SSH-Zugang über einen Jump Host) nehmen wir für die bessere Sicherheit in Kauf.
 
-**Bekannte Nachteile:** Die NAT-Instanz ist ein Single Point of Failure. Läuft sie nicht, haben die privaten Server keinen Internetzugang (z. B. keine Updates, keine Docker-Images für den Runner).
+**Bekannte Nachteile:** Die NAT-Instanz ist ein Single Point of Failure. Läuft sie nicht, haben die privaten Server keinen Internetzugang (zB keine Updates, keine Docker-Images für den Runner).
 
 **Kostenvergleich**
 
@@ -128,7 +128,7 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 **Begründung:**
 - Jeder Server bekommt eine **feste private IP**, die beim Start der Instanz eingetragen wird. So bleiben die DNS-Einträge auch nach Neustarts gültig.
 - Die dritte Zahl zeigt das Subnetz (`10.0.1.x` öffentlich, `10.0.2.x` privat), die letzte Zahl die Art des Dienstes: `.10`–`.19` Netzwerkdienste (NAT, DNS), `.20` Anwendungsdienste (GitLab, LDAP), `.30` CI/CD (Runner).
-- Die ersten vier Adressen und die letzte Adresse jedes Subnetzes reserviert AWS (z. B. `10.0.1.0`–`10.0.1.3` und `10.0.1.255`). Diese verwenden wir nicht.
+- Die ersten vier Adressen und die letzte Adresse jedes Subnetzes reserviert AWS (zB `10.0.1.0`–`10.0.1.3` und `10.0.1.255`). Diese verwenden wir nicht.
 - Die Instanztypen sind vorläufig und werden in Abschnitt 4.2 endgültig festgelegt und begründet.
 
 ### 2.4 Öffentliche IP / Elastic IP
@@ -194,7 +194,7 @@ Alle Server sollen unsere eigenen DNS-Server verwenden. Dafür legen wir ein **V
 | Domain name | `team02.internal` |
 | Domain name servers | `10.0.2.10` (ns1), `10.0.2.11` (ns2) |
 
-Jede Instanz bekommt diese Einstellungen beim Start automatisch. Fällt ns1 aus, fragen die Server automatisch bei ns2 nach. Wegen des Domain name reicht außerdem der Kurzname, z. B. `gitlab` statt `gitlab.team02.internal`.
+Jede Instanz bekommt diese Einstellungen beim Start automatisch. Fällt ns1 aus, fragen die Server automatisch bei ns2 nach. Wegen des Domain name reicht außerdem der Kurzname, zB `gitlab` statt `gitlab.team02.internal`.
 
 **Reihenfolge beim Aufbau (M2):** Das DHCP Options Set wird erst aktiviert, wenn ns1 und ns2 laufen. Vorher nutzen alle Server den Standard-DNS von AWS. Sonst könnten die DNS-Server beim Installieren ihre eigenen Pakete nicht herunterladen.
 
@@ -210,7 +210,7 @@ Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffent
 
 **Grundprinzip:** Eingehender Verkehr ist nur erlaubt, wenn ein Dienst ihn wirklich braucht, und nur aus der kleinstmöglichen Quelle. Interne Dienste nehmen nur Verkehr aus der VPC oder von bestimmten Security Groups an. Aus dem Internet ist nur GitLab erreichbar. Ausgehender Verkehr bleibt erlaubt (AWS-Standard). Für die privaten Server läuft er ohnehin nur über die NAT-Instanz.
 
-**SSH-Zugriff:** SSH aus dem Internet ist nur auf GitLab erlaubt, und nur von den öffentlichen IPs der Teammitglieder (jeweils `/32`, beim Arbeiten in der AWS-Konsole als „My IP“ eingetragen). GitLab dient als **Jump Host**: Auf alle anderen Server gelangen wir per SSH nur über GitLab (z. B. `ssh -J ubuntu@<Elastic IP> ubuntu@10.0.2.10`). GitLab eignet sich dafür, weil er durch die Elastic IP eine feste Adresse hat.
+**SSH-Zugriff:** SSH aus dem Internet ist nur auf GitLab erlaubt, und nur von den öffentlichen IPs der Teammitglieder (jeweils `/32`, beim Arbeiten in der AWS-Konsole als „My IP“ eingetragen). GitLab dient als **Jump Host**: Auf alle anderen Server gelangen wir per SSH nur über GitLab (zB `ssh -J ubuntu@<Elastic IP> ubuntu@10.0.2.10`). GitLab eignet sich dafür, weil er durch die Elastic IP eine feste Adresse hat.
 
 **Ping:** Alle Security Groups erlauben ICMP (ping) aus der VPC, damit wir die interne Erreichbarkeit testen und Fehler leichter finden können.
 
@@ -282,85 +282,148 @@ Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffent
 
 ## 4. Dienste, Betriebssystem und Software
 
-> 📝 **Aufgabe – Milestone „M1: Services and packages defined“** · Issues #9–#12
-
-### 4.1 Betriebssystem
-> 📝 Issue **#9 – Operating system, instance types and service mapping** 
+### 4.1 Betriebssystem 
 
 | Eigenschaft | Wert |
 |---|---|
-| Linux-Distribution und Version | _____ |
-| AMI | _____ |
+| Linux-Distribution und Version | Ubuntu Server 24.04 LTS |
+| AMI | Offizielles Ubuntu-AMI von Canonical: „Ubuntu Server 24.04 LTS (HVM), SSD Volume Type“, x86_64 |
 
-**Begründung:** _____
+**Entscheidung:** Alle Server laufen mit Ubuntu Server 24.04 LTS.
+
+**Alternativen:**
+- **Ubuntu 26.04 LTS:** neuer, aber GitLab bietet dafür noch keine eigenen Pakete an.
+- **Debian 12 / Amazon Linux 2023:** ebenfalls möglich, aber dem Team weniger vertraut.
+
+**Begründung:** Ubuntu 24.04 bekommt Sicherheitsupdates bis 2029 und wird von allen geplanten Diensten offiziell unterstützt. Weil alle Server dasselbe System haben, sind Befehle und Konfigurationspfade überall gleich. Das vereinfacht den Aufbau, Dokumentation und Fehlersuche. Das Team kennt Ubuntu bereits aus der Warm-up-Übung. Wir verwenden x86_64 statt ARM, damit alle Pakete und Docker-Images ohne Probleme laufen.
 
 ### 4.2 Mapping der Dienste auf Instanzen
-> 📝 Issue **#9** 
 
 | Instanz | Dienste | Instanztyp | vCPU / RAM | Festplatte | Begründung |
 |---|---|---|---|---|---|
-| ns1 | DNS (Primary) | _____ | _____ | _____ | _____ |
-| ns2 | DNS (Secondary) | _____ | _____ | _____ | _____ |
-| gitlab | GitLab, Container Registry | _____ | _____ | _____ | _____ |
-| runner | GitLab Runner, Docker | _____ | _____ | _____ | _____ |
-| ldap | LDAP | _____ | _____ | _____ | _____ |
+| nat | NAT für das private Subnetz | t3.nano | 2 / 0,5 GiB | 8 GiB | leitet nur Verkehr weiter, braucht kaum Leistung |
+| ns1 | DNS (Primary) | t3.micro | 2 / 1 GiB | 8 GiB | DNS erzeugt bei wenigen Servern kaum Last |
+| ns2 | DNS (Secondary) | t3.micro | 2 / 1 GiB | 8 GiB | eigene Instanz, damit ns2 bei Ausfall von ns1 übernehmen kann |
+| gitlab | GitLab, Container Registry | t3.medium | 2 / 4 GiB (+ 2 GiB Swap) | 40 GiB | GitLab braucht am meisten Arbeitsspeicher; laut GitLab-Doku reichen für bis zu 5 Nutzer ca. 2,5 GB RAM plus Swap. 40 GiB empfiehlt die Doku für eine Grundinstallation |
+| runner | GitLab Runner, Docker | t3.medium | 2 / 4 GiB | 30 GiB | Maven-Builds und Docker-Image-Builds brauchen viel Arbeitsspeicher und Platz für Images |
+| ldap | LDAP | t3.micro | 2 / 1 GiB | 8 GiB | OpenLDAP braucht bei wenigen Testnutzern kaum Ressourcen |
 
-**Grobe Kostenabschätzung:** _geschätzte Kosten bis Projektende gegenüber dem Budget von 50 $, mit Annahmen_
+**Entscheidung:** Jeder Dienst läuft auf einer eigenen Instanz. Der Runner wird gegenüber der vorläufigen Planung (t3.small) auf t3.medium vergrößert.
 
-**Monitoring (optional):** _CloudWatch ja/nein, Begründung_
+**Begründung:**
+- Ein Fehler oder eine hohe Last bei einem Dienst betrifft nur dessen Instanz. Ein CI-Job, der viel Arbeitsspeicher braucht, bremst zum Beispiel nicht GitLab aus.
+- ns1 und ns2 müssen auf getrennten Instanzen laufen, sonst würde der Secondary beim Ausfall des Primary ebenfalls ausfallen.
+- Beim Runner kostet t3.medium in 80 Stunden nur ca. 1,70 $ mehr als t3.small. Dafür vermeiden wir abgebrochene Builds wegen zu wenig Arbeitsspeicher.
+- Reicht ein Instanztyp nicht aus, kann er nachträglich geändert werden (Instanz stoppen, Typ ändern, neu starten).
+
+**Grobe Kostenabschätzung:**
+Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 Stunden
+
+| Kostenblock | Rechnung | Kosten |
+|---|---|---|
+| Instanzen | (3 × 0,0104 $ + 2 × 0,0416 $ + 0,0052 $) × 80 h | ca. 9,60 $ |
+| Festplatten (gp3, auch bei gestoppten Instanzen) | 102 GiB × 0,08 $ × 1,85 Monate | ca. 15,10 $ |
+| Öffentliche IPs (Elastic IP GitLab, automatische IP NAT) | siehe Abschnitt 2.4 | ca. 7,10 $ |
+| Datenverkehr | eingehender Verkehr aus dem Internet ist kostenlos | ca. 0 $ |
+| **Summe** | | **ca. 32 $ (ca. 64 % des Budgets)** |
+
+Die Festplatten sind der größte Kostenpunkt, weil sie auch bei gestoppten Instanzen verrechnet werden. Der tatsächliche Wert wird etwas niedriger sein, weil der LDAP-Server erst in M3 erstellt wird (siehe 2.4).
+
+**Monitoring (optional):** 
+Wir nutzen nur das kostenlose Basic Monitoring von CloudWatch. Es ist für alle EC2-Instanzen automatisch aktiv und zeigt zB CPU-Auslastung und Statuschecks. Auf Detailed Monitoring und den CloudWatch-Agent verzichten wir, weil sie zusätzlich kosten und für unser Projekt nicht nötig sind.
 
 ### 4.3 DNS
-> 📝 Issue **#10 – DNS and LDAP software** 
 
 | Eigenschaft | Wert |
 |---|---|
-| Software und Version | _____ |
-| Installationsart | _____ |
-| Forward-Zone | _Domain-Name_ |
-| Reverse-Zone | _____ |
-| Forwarder für externe Namen | _____ |
+| Software und Version | BIND 9.18 (Paket `bind9`) und `dnsutils` für Tests (`dig`, `nslookup`) |
+| Installationsart | Installation über `apt` auf ns1 und ns2 |
+| Forward-Zone | `team02.internal` |
+| Reverse-Zone | `1.0.10.in-addr.arpa` (öffentliches Subnetz) und `2.0.10.in-addr.arpa` (privates Subnetz) |
+| Forwarder für externe Namen | Google Public DNS `8.8.8.8` und `8.8.4.4` |
 
-**Aufbau:** _wie Primary und Secondary zusammenarbeiten (Zone Transfer, Failover)_
+**Aufbau:**
+- **ns1** ist der Primary. Nur hier werden die Zonendateien bearbeitet. Jeder Server hat einen A-Record (Name → IP) und einen PTR-Record (IP → Name).
+- **ns2** ist der Secondary. Er holt sich die Zonen automatisch von ns1 (Zone Transfer). ns1 meldet jede Änderung sofort an ns2 (NOTIFY). Damit ns2 eine Änderung übernimmt, muss in der Zone die Seriennummer erhöht werden.
+- **Failover:** Alle Server kennen ns1 und ns2 über das DHCP Options Set (siehe 2.5). Fällt ns1 aus, fragen sie automatisch bei ns2 nach.
+- **Externe Namen** (zB für Updates) leiten beide DNS-Server über die NAT-Instanz an Google DNS weiter.
 
-**Alternativen:** _____
+**Entscheidung:** BIND 9 auf ns1 (Primary) und ns2 (Secondary).
 
-**Begründung:** _____
+**Alternativen:** 
+- **Amazon Route 53 (Private Hosted Zone):** von AWS verwaltet, erfüllt aber nicht die Anforderung, DNS selbst zu betreiben, und kostet extra.
+- **PowerDNS:** kann ebenfalls Primary/Secondary, ist aber weniger verbreitet.
+- **dnsmasq:** einfach, kann aber keinen Zone Transfer zwischen Primary und Secondary.
+
+
+**Begründung:** BIND ist der am weitesten verbreitete DNS-Server und wird in der Angabe empfohlen. Er kann alles, was wir brauchen: Forward- und Reverse-Zonen, Zone Transfer, NOTIFY und Forwarding. Es gibt viele Anleitungen, was die Recherche und Fehlersuche erleichtert. BIND ist direkt in Ubuntu enthalten und läuft problemlos auf einer t3.micro-Instanz.
 
 ### 4.4 GitLab-Server
-> 📝 Issue **#11 – GitLab server software**
 
 | Eigenschaft | Wert |
 |---|---|
-| Edition und Version | _____ |
-| Installationsart | _Paket oder Docker_ |
-| Container Registry | _Port _____, HTTP/HTTPS_ |
+| Edition und Version | GitLab Community Edition (CE) 19.x (aktuellste Version bei der Installation, zum Zeitpunkt der Planung 19.5) |
+| Installationsart | Paket: offizielles Linux-Paket (`gitlab-ce`) aus dem GitLab-Paket-Repository, Installation über `apt` |
+| Adresse | `http://gitlab.team02.internal` (`external_url`) |
+| Container Registry | Port 5050, HTTP (`http://gitlab.team02.internal:5050`) |
 
-**Begründung:** _____
+**Aufbau:**
+- Das Linux-Paket enthält alles, was GitLab braucht: Weboberfläche, Datenbank (PostgreSQL), Redis, Webserver (NGINX) und die Container Registry. Die Konfiguration erfolgt zentral in der Datei `/etc/gitlab/gitlab.rb`.
+- Damit GitLab mit 4 GiB Arbeitsspeicher stabil läuft, richten wir 2 GiB Swap ein und folgen der GitLab-Anleitung für Umgebungen mit wenig Arbeitsspeicher (zB weniger Puma-Worker, internes Monitoring mit Prometheus ausgeschaltet).
+- GitLab ist überall unter demselben Namen `gitlab.team02.internal` erreichbar. In der VPC löst unser DNS den Namen auf die private IP `10.0.1.20` auf. Auf den Laptops tragen wir den Namen einmalig mit der Elastic IP in die `hosts`-Datei ein. So sind Clone-Adressen und Registry-Adresse überall gleich.
+- **Container Registry:** Der Runner lädt die fertigen Docker-Images über `gitlab.team02.internal:5050` hoch. Weil die Registry nur HTTP verwendet, wird sie bei Docker als „insecure registry“ eingetragen (auf dem Runner und auf dem Laptop für die Vorführung).
+
+**Entscheidung:** GitLab CE als Linux-Paket, Weboberfläche über HTTP, Container Registry über HTTP auf Port 5050.
+
+**Alternativen:**
+- **GitLab in einem Docker-Container:** leicht zu starten, braucht aber zusätzlichen Arbeitsspeicher für Docker und macht Konfiguration und Fehlersuche aufwendiger.
+- **GitLab Enterprise Edition (EE):** enthält mehr Funktionen, die wir nicht brauchen, und verbraucht mehr Ressourcen.
+- **HTTPS mit selbst signiertem Zertifikat:** sicherer, aber das Zertifikat müsste auf dem Runner, in jedem Docker-Build und auf allen Laptops eingetragen werden. Ein Zertifikat von Let's Encrypt ist nicht möglich, weil unsere Domain `team02.internal` nicht öffentlich ist.
+
+**Begründung:** Das Linux-Paket ist die von GitLab empfohlene Installationsart, enthält alle Komponenten und läuft ohne Docker-Overhead. Das ist wichtig, weil unser Arbeitsspeicher knapp ist. Die CE-Edition ist kostenlos und deckt alles ab, was wir brauchen (Repositories, CI/CD, Container Registry, LDAP-Anmeldung). HTTP statt HTTPS hält den Aufbau einfach. **Bekannter Nachteil:** Daten und Passwörter werden unverschlüsselt übertragen. Für ein Lehrprojekt ohne echte Daten nehmen wir das in Kauf. Wird HTTPS später nötig, kann es nachträglich in `gitlab.rb` aktiviert werden.
+
 
 ### 4.5 GitLab Runner
-> 📝 Issue **#12 – GitLab Runner software and software project** 
-
-| Eigenschaft | Wert gfcggf|
-|---|---|
-| Version | _____ |
-| Installationsart | _____ |
-| Executor | _____ |
-| Bau von Docker-Images | _____ |
-| Registrierung | über `gitlab._____` (interner DNS-Name, laut Angabe gefordert) |
-
-**Begründung:** _____
-
-### 4.6 LDAP
-> 📝 Issue **#10 – DNS and LDAP software** 
 
 | Eigenschaft | Wert |
 |---|---|
-| Software und Version | _____ |
-| Installationsart | _____ |
-| Base DN | _____ |
-| Anbindung | GitLab kontaktiert `ldap._____` (interner DNS-Name, laut Angabe gefordert) |
+| Version | GitLab Runner 19.x (passend zur Version des GitLab-Servers) |
+| Installationsart | Paket `gitlab-runner` aus dem offiziellen GitLab-Paket-Repository, Installation über `apt`. Dazu Docker Engine aus dem offiziellen Docker-Repository |
+| Executor | Docker |
+| Bau von Docker-Images | Docker-in-Docker (Service `docker:dind`, Runner im privileged-Modus) |
+| Registrierung | über `gitlab.team02.internal` (interner DNS-Name, laut Angabe gefordert) |
 
-**Begründung:** _____
+**Aufbau:**
+- Der Runner fragt regelmäßig bei GitLab nach neuen Jobs. Er baut die Verbindung selbst auf, deshalb braucht er keine offenen Ports (siehe `sg-runner` in 3.2).
+- **Docker Executor:** Jeder Job läuft in einem eigenen, frischen Container mit dem Image, das in der Pipeline angegeben ist (zB ein Maven-Image für Build und Tests). Nach dem Job wird der Container gelöscht.
+- **Docker-Images bauen:** Für den Build-Job startet der Runner zusätzlich einen Docker-in-Docker-Container (`docker:dind`). Darin wird das Image gebaut und anschließend in die Registry von GitLab hochgeladen. Damit das funktioniert, läuft der Runner im privileged-Modus und die Registry `gitlab.team02.internal:5050` ist als insecure registry eingetragen.
+- **Registrierung:** Der Runner wird in der GitLab-Oberfläche angelegt. Mit dem dort erzeugten Token wird er auf dem Server mit `gitlab-runner register` und der Adresse `http://gitlab.team02.internal` registriert.
+
+**Entscheidung:** GitLab Runner mit Docker Executor, Docker-Images werden mit Docker-in-Docker gebaut.
+
+**Alternativen:**
+- **Shell Executor:** Jobs laufen direkt auf dem Server. Einfacher, aber alle Werkzeuge (Java, Maven usw.) müssen auf dem Server installiert sein, und Jobs können sich gegenseitig beeinflussen.
+- **Docker Socket Binding:** Jobs verwenden direkt das Docker des Servers. Schneller, aber ein Job hat damit volle Kontrolle über den Server und alle Container.
+- **Kaniko / Buildah:** bauen Images ohne privileged-Modus, sind aber weniger verbreitet und schwieriger einzurichten.
+
+**Begründung:** Mit dem Docker Executor läuft jeder Job in einer sauberen, gleichen Umgebung, und die benötigten Werkzeuge kommen über das Image in der Pipeline. Auf dem Server muss nur Docker installiert sein. Docker-in-Docker ist der in der GitLab-Dokumentation beschriebene Standardweg zum Bauen von Images und gut dokumentiert. Der privileged-Modus ist ein Sicherheitsrisiko, ist bei uns aber vertretbar: Der Runner liegt im privaten Subnetz, ist aus dem Internet nicht erreichbar und führt nur Pipelines aus unserem eigenen GitLab aus. Die Registrierung über den internen DNS-Namen erfüllt die Anforderung der Angabe und hängt nicht von der öffentlichen IP ab.
+
+### 4.6 LDAP
+
+| Eigenschaft | Wert |
+|---|---|
+| Software und Version | OpenLDAP 2.6 (Paket `slapd`) und `ldap-utils` für Tests (`ldapsearch`, `ldapadd`) |
+| Installationsart | Installation über `apt` auf der Instanz ldap |
+| Base DN | `dc=team02,dc=internal` mit `ou=people` (Benutzer) und `ou=groups` (Gruppen) |
+| Anbindung | GitLab kontaktiert `ldap.team02.internal` (interner DNS-Name, laut Angabe gefordert) über Port 389 |
+
+**Entscheidung:** OpenLDAP auf einer eigenen Instanz im privaten Subnetz.
+
+**Alternativen:**
+- **389 Directory Server:** leistungsfähig, aber aufwendiger einzurichten.
+- **FreeIPA:** kombiniert LDAP, Kerberos und DNS, ist für unser Projekt aber zu groß und braucht mehr Ressourcen.
+
+**Begründung:** OpenLDAP ist die bekannteste Open-Source-LDAP-Lösung, wird in der Angabe empfohlen und wird von GitLab unterstützt. Der Base DN ergibt sich direkt aus unserer Domain `team02.internal`. Die Aufteilung in `ou=people` und `ou=groups` ist der übliche Aufbau. GitLab meldet sich mit einem eigenen Benutzer an, der nur Leserechte hat, nicht mit dem Admin-Konto. Port 389 ist nur für GitLab offen (siehe `sg-ldap` in Abschnitt 3.2).
 
 ---
 
@@ -374,7 +437,7 @@ Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffent
 
 | # | Test | Befehl / Vorgehen | Erwartetes Ergebnis |
 |---|---|---|---|
-| N1 | Server erreichen sich intern | _z. B. `ping` von runner zu gitlab_ | Antwort erhalten |
+| N1 | Server erreichen sich intern | _zB `ping` von runner zu gitlab_ | Antwort erhalten |
 | N2 | Interne Dienste von außen gesperrt | Verbindung von außen auf DNS- bzw. LDAP-Port | Verbindung schlägt fehl |
 | N3 | GitLab aus dem Internet erreichbar | GitLab-URL im Browser öffnen | Login-Seite erscheint |
 
@@ -425,7 +488,7 @@ Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffent
 
 ### 6.1 Beschreibung
 
-_Name des Projekts, Zweck, Aufbau (z. B. Schichten), Herkunft (z. B. aus SWEN1). 3–5 Sätze._
+_Name des Projekts, Zweck, Aufbau (zB Schichten), Herkunft (zB aus SWEN1). 3–5 Sätze._
 
 ### 6.2 Build- und Testanforderungen
 
@@ -441,7 +504,7 @@ _Name des Projekts, Zweck, Aufbau (z. B. Schichten), Herkunft (z. B. aus SWEN1).
 
 ### 6.3 Bedeutung für die Infrastruktur
 
-_z. B. welche Ressourcen der Runner für Build und Tests braucht und warum GitLab eine Container Registry benötigt._
+_zB welche Ressourcen der Runner für Build und Tests braucht und warum GitLab eine Container Registry benötigt._
 
 ---
 
