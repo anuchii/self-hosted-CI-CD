@@ -199,13 +199,10 @@ Jede Instanz bekommt diese Einstellungen beim Start automatisch. Fällt ns1 aus,
 **Reihenfolge beim Aufbau (M2):** Das DHCP Options Set wird erst aktiviert, wenn ns1 und ns2 laufen. Vorher nutzen alle Server den Standard-DNS von AWS. Sonst könnten die DNS-Server beim Installieren ihre eigenen Pakete nicht herunterladen.
 
 ### 2.6 Topologie-Diagramm
-> 📝 Issue **#6 – Draw network topology diagram**
 
-`![Netzwerktopologie](images/network-topology.png)`
+![Netzwerktopologie](images/network-topology.drawio.svg)
 
-_Das Diagramm zeigt VPC, Subnetze, Internet Gateway, (NAT), Route Tables und alle Instanzen mit privater IP und FQDN._
-
-> 📝 Issue **#7** ist erledigt, wenn die Abschnitte 2.1–2.6 keine Platzhalter mehr enthalten und eine zweite Person sie geprüft hat.
+Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffentlichen Subnetz `10.0.1.0/24` und dem privaten Subnetz `10.0.2.0/24`. Eingezeichnet sind das Internet Gateway, die NAT-Instanz, die beiden Route Tables (`rt-public`, `rt-private`) und das DHCP Options Set sowie alle Instanzen mit FQDN, privater IP, Art der öffentlichen IP und Instanztyp. Die Pfeile zeigen, welcher Verkehr über das Internet Gateway läuft und welcher nur ausgehend über die NAT-Instanz. Die Datei `images/network-topology.drawio.svg` kann direkt mit draw.io bearbeitet werden.
 
 ---
 
