@@ -38,7 +38,7 @@ Als internen Domain-Namen verwenden wir `team02.internal`.
 | GitLab | `gitlab.team02.internal` | GitLab inkl. Container Registry |
 | Runner | `runner.team02.internal` | GitLab Runner |
 | LDAP | `ldap.team02.internal` | LDAP |
-|  NAT-Instanz| `nat.team02.internal`| NAT für das private Subnetz |
+| NAT-Instanz| `nat.team02.internal`| NAT für das private Subnetz |
 
 
 ---
@@ -136,8 +136,8 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 | Server | Art der öffentlichen IP | Grund |
 |---|---|---|
 | GitLab | Elastic IP | stabile Adresse für Weboberfläche, Clone und Push |
-| NAT-Instanz | automatisch zugewiesen | nur für ausgehenden Verkehr, Adresse darf sich ändern |
 | ns1, ns2, LDAP, Runner | keine | liegen im privaten Subnetz |
+| NAT-Instanz | automatisch zugewiesen | nur für ausgehenden Verkehr, Adresse darf sich ändern |
 
 **Entscheidung:** GitLab erhält eine Elastic IP. Die NAT-Instanz bekommt eine automatisch zugewiesene öffentliche IP. Alle anderen Server haben keine öffentliche IP.
 
@@ -162,17 +162,41 @@ Mit der Elastic IP steigen die geschätzten Gesamtkosten von Option B2 von ca. 2
 
 ### 2.5 Routing und Namensauflösung
 
-> 📝 Issue **#5 – Describe routing**
+#### Route Tables
 
-| Route Table | Subnetz | Ziel | Gateway |
-|---|---|---|---|
-| _____ | _____ | _VPC-CIDR_ | local |
-| _____ | _____ | `0.0.0.0/0` | Internet Gateway |
-| _____ _(nur Option B)_ | _____ | `0.0.0.0/0` | _NAT Gateway / NAT-Instanz_ |
+| Route Table | Zugeordnetes Subnetz | Ziel | Weiterleitung an | Zweck |
+|---|---|---|---|---|
+| `rt-public` | öffentlich (`10.0.1.0/24`) | `10.0.0.0/16` | local | Verkehr innerhalb der VPC |
+| `rt-public` | öffentlich (`10.0.1.0/24`) | `0.0.0.0/0` | Internet Gateway | Verbindung ins Internet |
+| `rt-private` | privat (`10.0.2.0/24`) | `10.0.0.0/16` | local | Verkehr innerhalb der VPC |
+| `rt-private` | privat (`10.0.2.0/24`) | `0.0.0.0/0` | NAT-Instanz (`10.0.1.10`) | Internetzugang nur nach außen |
 
-_Beschreibung: welcher Verkehr die VPC verlässt und welcher intern bleibt._
+Die Route `local` legt AWS in jeder Route Table automatisch an. Sie sorgt dafür, dass sich alle Server innerhalb der VPC direkt erreichen. Damit die NAT-Instanz Verkehr anderer Server weiterleiten darf, wird bei ihr in AWS der „Source/Destination Check“ ausgeschaltet.
 
-_Namensauflösung: wie alle Server ns1 und ns2 als Nameserver verwenden (z. B. VPC DHCP Options Set)._
+#### Welcher Verkehr bleibt intern, welcher verlässt die VPC
+
+| Verbindung | Weg | Bleibt in der VPC? |
+|---|---|---|
+| Runner → GitLab (Jobs abholen) | direkt über private IPs | ja |
+| GitLab → LDAP (Login prüfen) | direkt über private IPs | ja |
+| Alle Server → ns1/ns2 (Namensauflösung) | direkt über private IPs | ja |
+| ns1 → ns2 (Zone Transfer) | direkt über private IPs | ja |
+| Laptop → GitLab (Web, Clone, Push) | Internet → Internet Gateway → Elastic IP von GitLab | nein |
+| Private Server → Internet (Updates, Docker-Images, Maven-Pakete, externe DNS-Anfragen) | NAT-Instanz → Internet Gateway | nein, nur ausgehend |
+| Internet → private Server | nicht möglich | – |
+
+#### Namensauflösung in der VPC
+
+Alle Server sollen unsere eigenen DNS-Server verwenden. Dafür legen wir ein **VPC DHCP Options Set** an und verknüpfen es mit der VPC:
+
+| Einstellung | Wert |
+|---|---|
+| Domain name | `team02.internal` |
+| Domain name servers | `10.0.2.10` (ns1), `10.0.2.11` (ns2) |
+
+Jede Instanz bekommt diese Einstellungen beim Start automatisch. Fällt ns1 aus, fragen die Server automatisch bei ns2 nach. Wegen des Domain name reicht außerdem der Kurzname, z. B. `gitlab` statt `gitlab.team02.internal`.
+
+**Reihenfolge beim Aufbau (M2):** Das DHCP Options Set wird erst aktiviert, wenn ns1 und ns2 laufen. Vorher nutzen alle Server den Standard-DNS von AWS. Sonst könnten die DNS-Server beim Installieren ihre eigenen Pakete nicht herunterladen.
 
 ### 2.6 Topologie-Diagramm
 > 📝 Issue **#6 – Draw network topology diagram**
