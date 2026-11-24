@@ -25,7 +25,7 @@ Ziel des Projekts ist eine selbst gehostete CI/CD-Infrastruktur auf Linux-VMs in
 
 ### 1.1 Interner Domain-Name
 
-Als internen Domain-Namen verwenden wir` team02.internal`.
+Als internen Domain-Namen verwenden wir `team02.internal`.
 **Begründung:** Die Endung `.internal` ist offiziell für private Netzwerke vorgesehen und wird im Internet nie vergeben. So kann unser Name nicht mit einer echten Website verwechselt werden. Der Name gilt nur innerhalb unserer VPC und wird nur von unseren eigenen DNS-Servern aufgelöst, deshalb müssen wir ihn nicht registrieren. `team02` zeigt, dass die Infrastruktur zu unserem Team gehört.
 
 ### 1.2 Überblick über die Server
@@ -37,7 +37,7 @@ Als internen Domain-Namen verwenden wir` team02.internal`.
 | GitLab | `gitlab.team02.internal` | GitLab inkl. Container Registry |
 | Runner | `runner.team02.internal` | GitLab Runner |
 | LDAP | `ldap.team02.internal` | LDAP |
-|  NAT-Instanz| ` nat.team02.internal`| NAT für das private Subnetz |
+|  NAT-Instanz| `nat.team02.internal`| NAT für das private Subnetz |
 
 
 ---
@@ -47,6 +47,7 @@ Als internen Domain-Namen verwenden wir` team02.internal`.
 ### 2.1 Subnetz-Aufbau
 
 **Entscheidung:** GitLab läuft in einem öffentlichen Subnetz, DNS, LDAP und Runner in einem privaten Subnetz (Option B2). Die privaten Server erreichen das Internet über eine kleine NAT-Instanz (t3.nano) im öffentlichen Subnetz.
+
 ```mermaid
 flowchart TB
     laptop["Laptop (Team)"]
@@ -76,6 +77,7 @@ flowchart TB
     runner -->|"holt Jobs"| gitlab
     gitlab -->|"prüft Login"| ldap
 ```
+
 **Alternativen:**
 - **Option A:** Alle Server in einem einzigen öffentlichen Subnetz, Schutz nur über Security Groups.
 - **Option B1:** Aufbau wie B2, aber mit einem verwalteten NAT Gateway statt NAT-Instanz.
@@ -94,7 +96,6 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 | **B2 – privates Subnetz mit NAT-Instanz** | **ca. 20 $** | **ca. 40 %** |
 | B1 – NAT Gateway (dauerhaft) | ca. 86 $ | über Budget |
 
-Preise laut AWS (EC2, EBS, öffentliche IPv4-Adressen, NAT Gateway), berechnet mit dem [AWS Pricing Calculator](https://calculator.aws/).
 ### 2.2 Adressbereiche
 
 
@@ -114,17 +115,21 @@ Preise laut AWS (EC2, EBS, öffentliche IPv4-Adressen, NAT Gateway), berechnet m
 
 
 ### 2.3 IP- und Namensplan
-> 📝 Issue **#3 – Create IP and hostname plan** 
 
-| FQDN | Private IP | Subnetz | Öffentliche IP |
-|---|---|---|---|
-| `ns1._____` | _____ | _____ | _____ |
-| `ns2._____` | _____ | _____ | _____ |
-| `gitlab._____` | _____ | _____ | _____ |
-| `runner._____` | _____ | _____ | _____ |
-| `ldap._____` | _____ | _____ | _____ |
+| Server | FQDN | Private IP | Subnetz | Öffentliche IP | Instanztyp (vorläufig) |
+|---|---|---|---|---|---|
+| NAT-Instanz | `nat.team02.internal` | `10.0.1.10` | öffentlich | ja | t3.nano |
+| GitLab | `gitlab.team02.internal` | `10.0.1.20` | öffentlich | ja (Details in 2.4) | t3.medium |
+| DNS primär | `ns1.team02.internal` | `10.0.2.10` | privat | nein | t3.micro |
+| DNS sekundär | `ns2.team02.internal` | `10.0.2.11` | privat | nein | t3.micro |
+| LDAP | `ldap.team02.internal` | `10.0.2.20` | privat | nein | t3.micro |
+| Runner | `runner.team02.internal` | `10.0.2.30` | privat | nein | t3.small |
 
-_Private IPs werden beim Start der Instanzen fest vergeben, damit die DNS-Einträge stabil bleiben._
+**Begründung:**
+- Jeder Server bekommt eine **feste private IP**, die beim Start der Instanz eingetragen wird. So bleiben die DNS-Einträge auch nach Neustarts gültig.
+- Die dritte Zahl zeigt das Subnetz (`10.0.1.x` öffentlich, `10.0.2.x` privat), die letzte Zahl die Art des Dienstes: `.10`–`.19` Netzwerkdienste (NAT, DNS), `.20` Anwendungsdienste (GitLab, LDAP), `.30` CI/CD (Runner).
+- Die ersten vier Adressen und die letzte Adresse jedes Subnetzes reserviert AWS (z. B. `10.0.1.0`–`10.0.1.3` und `10.0.1.255`). Diese verwenden wir nicht.
+- Die Instanztypen sind vorläufig und werden in Abschnitt 4.2 endgültig festgelegt und begründet.
 
 ### 2.4 Öffentliche IP / Elastic IP
 > 📝 Issue **#4 – Decide public IP / Elastic IP for GitLab**
