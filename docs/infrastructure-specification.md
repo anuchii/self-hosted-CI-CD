@@ -208,55 +208,77 @@ Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffent
 
 ## 3. Security Groups
 
-> 📝 **Aufgabe – Milestone „M1: Security groups defined“** · Issue **#8** · Bereich 1, Ports mit den Bereichen 2, 3, 4 abstimmen
+**Grundprinzip:** Eingehender Verkehr ist nur erlaubt, wenn ein Dienst ihn wirklich braucht, und nur aus der kleinstmöglichen Quelle. Interne Dienste nehmen nur Verkehr aus der VPC oder von bestimmten Security Groups an. Aus dem Internet ist nur GitLab erreichbar. Ausgehender Verkehr bleibt erlaubt (AWS-Standard). Für die privaten Server läuft er ohnehin nur über die NAT-Instanz.
 
-**Grundprinzip:** 
+**SSH-Zugriff:** SSH aus dem Internet ist nur auf GitLab erlaubt, und nur von den öffentlichen IPs der Teammitglieder (jeweils `/32`, beim Arbeiten in der AWS-Konsole als „My IP“ eingetragen). GitLab dient als **Jump Host**: Auf alle anderen Server gelangen wir per SSH nur über GitLab (z. B. `ssh -J ubuntu@<Elastic IP> ubuntu@10.0.2.10`). GitLab eignet sich dafür, weil er durch die Elastic IP eine feste Adresse hat.
 
-**SSH-Zugriff für Admins:** _von welchen IPs, und warum_
+**Ping:** Alle Security Groups erlauben ICMP (ping) aus der VPC, damit wir die interne Erreichbarkeit testen und Fehler leichter finden können.
 
 ### 3.1 Übersicht
 
-| Security Group | Zugeordnete Server |
-|---|---|
-| _____ | ns1, ns2 |
-| _____ | gitlab |
-| _____ | runner |
-| _____ | ldap |
+| Security Group | Zugeordnete Server | Aus dem Internet erreichbar? |
+|---|---|---|
+| `sg-gitlab` | gitlab | ja (Web, Registry, SSH für Admins) |
+| `sg-nat` | nat | nein |
+| `sg-dns` | ns1, ns2 | nein |
+| `sg-ldap` | ldap | nein |
+| `sg-runner` | runner | nein |
 
-### 3.2 Regeln je Security Group _(Vorschlag – prüfen)_
+### 3.2 Regeln je Security Group (eingehend)
 
-**DNS-Server**
-
-| Port | Protokoll | Quelle | Zweck |
-|---|---|---|---|
-| 53 | UDP | _VPC-CIDR_ | DNS-Anfragen |
-| 53 | TCP | _VPC-CIDR_ | DNS-Anfragen und Zone Transfer |
-| 22 | TCP | _Admin-IPs_ | SSH-Verwaltung |
-
-**GitLab**
+**`sg-gitlab`**
 
 | Port | Protokoll | Quelle | Zweck |
 |---|---|---|---|
-| 80 / 443 | TCP | _____ | Weboberfläche, Clone/Push über HTTP(S) |
-| _____ | TCP | _____ | Container Registry |
-| 22 | TCP | _____ | SSH (Verwaltung bzw. Git über SSH) |
+| 80 | TCP | `0.0.0.0/0` | Weboberfläche und Git über HTTP (leitet auf HTTPS weiter, falls aktiviert) |
+| 443 | TCP | `0.0.0.0/0` | Weboberfläche und Git über HTTPS |
+| 5050 | TCP | `0.0.0.0/0` | Container Registry (Push vom Runner, Pull für die Vorführung) |
+| 22 | TCP | Admin-IPs (`/32`) | SSH-Verwaltung und Jump Host |
+| ICMP | – | `10.0.0.0/16` | Ping aus der VPC |
 
-**Runner**
+**Begründung:** GitLab muss laut Angabe aus dem Internet erreichbar sein. Web und Registry sind durch die GitLab-Anmeldung geschützt. Git nutzen wir nur über HTTP(S), damit Port 22 ausschließlich für die Verwaltung offen ist.
 
-| Port | Protokoll | Quelle | Zweck |
-|---|---|---|---|
-| 22 | TCP | _Admin-IPs_ | SSH-Verwaltung |
-
-_Der Runner baut die Verbindung zu GitLab selbst auf und braucht keine weiteren eingehenden Ports._
-
-**LDAP**
+**`sg-nat`**
 
 | Port | Protokoll | Quelle | Zweck |
 |---|---|---|---|
-| 389 | TCP | _Security Group von GitLab_ | LDAP-Anfragen von GitLab |
-| 22 | TCP | _Admin-IPs_ | SSH-Verwaltung |
+| 80 | TCP | `10.0.2.0/24` | Paket-Downloads der privaten Server (HTTP) |
+| 443 | TCP | `10.0.2.0/24` | Paket-Downloads, Docker-Images, Maven-Pakete (HTTPS) |
+| 53 | UDP/TCP | `10.0.2.0/24` | Weiterleitung externer DNS-Anfragen der DNS-Server |
+| 22 | TCP | `sg-gitlab` | SSH-Verwaltung über den Jump Host |
+| ICMP | – | `10.0.0.0/16` | Ping aus der VPC |
 
----
+**Begründung:** Die NAT-Instanz nimmt nur Verkehr aus dem privaten Subnetz an, und nur für die Dienste, die die privaten Server wirklich nach außen brauchen.
+
+**`sg-dns`**
+
+| Port | Protokoll | Quelle | Zweck |
+|---|---|---|---|
+| 53 | UDP | `10.0.0.0/16` | DNS-Anfragen aller Server |
+| 53 | TCP | `10.0.0.0/16` | DNS-Anfragen und Zone Transfer zwischen ns1 und ns2 |
+| 22 | TCP | `sg-gitlab` | SSH-Verwaltung über den Jump Host |
+| ICMP | – | `10.0.0.0/16` | Ping aus der VPC |
+
+**Begründung:** Alle Server der VPC müssen Namen auflösen können. Aus dem Internet ist DNS nicht erreichbar.
+
+**`sg-ldap`**
+
+| Port | Protokoll | Quelle | Zweck |
+|---|---|---|---|
+| 389 | TCP | `sg-gitlab` | LDAP-Anfragen von GitLab (Login-Prüfung) |
+| 22 | TCP | `sg-gitlab` | SSH-Verwaltung über den Jump Host |
+| ICMP | – | `10.0.0.0/16` | Ping aus der VPC |
+
+**Begründung:** Nur GitLab muss Benutzer im LDAP prüfen. Deshalb ist Port 389 nur für die Security Group von GitLab offen, nicht für die ganze VPC.
+
+**`sg-runner`**
+
+| Port | Protokoll | Quelle | Zweck |
+|---|---|---|---|
+| 22 | TCP | `sg-gitlab` | SSH-Verwaltung über den Jump Host |
+| ICMP | – | `10.0.0.0/16` | Ping aus der VPC |
+
+**Begründung:** Der Runner baut die Verbindung zu GitLab selbst auf (ausgehend) und braucht deshalb keine weiteren eingehenden Ports.
 
 ## 4. Dienste, Betriebssystem und Software
 
@@ -318,7 +340,7 @@ _Der Runner baut die Verbindung zu GitLab selbst auf und braucht keine weiteren 
 ### 4.5 GitLab Runner
 > 📝 Issue **#12 – GitLab Runner software and software project** 
 
-| Eigenschaft | Wert |
+| Eigenschaft | Wert gfcggf|
 |---|---|
 | Version | _____ |
 | Installationsart | _____ |
