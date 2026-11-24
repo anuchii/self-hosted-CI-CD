@@ -25,35 +25,76 @@ Ziel des Projekts ist eine selbst gehostete CI/CD-Infrastruktur auf Linux-VMs in
 
 ### 1.1 Interner Domain-Name
 
-Als internen Domain-Namen verwenden wir **`_____`** _(Vorschlag: `team02.internal`)_.
-
-_Begründung, z. B.: Die Top-Level-Domain `.internal` ist von der ICANN für private Netzwerke reserviert und wird nicht öffentlich vergeben. So entstehen keine Namenskonflikte mit öffentlichen Domains. Der Name wird nur von unseren eigenen DNS-Servern innerhalb der VPC aufgelöst._
+Als internen Domain-Namen verwenden wir` team02.internal`.
+**Begründung:** Die Endung `.internal` ist offiziell für private Netzwerke vorgesehen und wird im Internet nie vergeben. So kann unser Name nicht mit einer echten Website verwechselt werden. Der Name gilt nur innerhalb unserer VPC und wird nur von unseren eigenen DNS-Servern aufgelöst, deshalb müssen wir ihn nicht registrieren. `team02` zeigt, dass die Infrastruktur zu unserem Team gehört.
 
 ### 1.2 Überblick über die Server
 
 | Server | FQDN | Dienst |
 |---|---|---|
-| DNS primär | `ns1._____` | DNS (Primary) |
-| DNS sekundär | `ns2._____` | DNS (Secondary) |
-| GitLab | `gitlab._____` | GitLab inkl. Container Registry |
-| Runner | `runner._____` | GitLab Runner |
-| LDAP | `ldap._____` | LDAP |
+| DNS primär | `ns1.team02.internal` | DNS (Primary) |
+| DNS sekundär | `ns2.team02.internal` | DNS (Secondary) |
+| GitLab | `gitlab.team02.internal` | GitLab inkl. Container Registry |
+| Runner | `runner.team02.internal` | GitLab Runner |
+| LDAP | `ldap.team02.internal` | LDAP |
+|  NAT-Instanz| ` nat.team02.internal`| NAT für das private Subnetz |
+
 
 ---
 
 ## 2. Netzwerktopologie
 
-> 📝 **Aufgabe – Milestone „M1: Network topology defined“** Issues #1–#7
-
 ### 2.1 Subnetz-Aufbau
-> 📝 Issue **#1 – Decide subnet layout**
 
-**Entscheidung:** bsp: _Option A (ein öffentliches Subnetz) oder Option B (öffentliches + privates Subnetz)_
+**Entscheidung:** GitLab läuft in einem öffentlichen Subnetz, DNS, LDAP und Runner in einem privaten Subnetz (Option B2). Die privaten Server erreichen das Internet über eine kleine NAT-Instanz (t3.nano) im öffentlichen Subnetz.
+```mermaid
+flowchart TB
+    laptop["Laptop (Team)"]
+    internet((Internet))
 
-**Alternativen:** _die nicht gewählte Option, kurz_
+    subgraph vpc["AWS VPC"]
+        igw["Internet Gateway"]
 
-**Begründung:** _2–4 Sätze zu Sicherheit, Aufwand und Kosten (NAT Gateway bzw. NAT-Instanz gegenüber dem Budget von 50 $)_
+        subgraph public["Öffentliches Subnetz"]
+            gitlab["gitlab.team02.internal<br/>GitLab + Registry"]
+            nat["nat.team02.internal<br/>NAT-Instanz"]
+        end
 
+        subgraph private["Privates Subnetz"]
+            ns1["ns1.team02.internal<br/>DNS primär"]
+            ns2["ns2.team02.internal<br/>DNS sekundär"]
+            ldap["ldap.team02.internal<br/>LDAP"]
+            runner["runner.team02.internal<br/>GitLab Runner"]
+        end
+    end
+
+    laptop --> internet
+    internet <--> igw
+    igw <--> gitlab
+    igw <--> nat
+    ns1 & ns2 & ldap & runner -.->|"Internet über NAT"| nat
+    runner -->|"holt Jobs"| gitlab
+    gitlab -->|"prüft Login"| ldap
+```
+**Alternativen:**
+- **Option A:** Alle Server in einem einzigen öffentlichen Subnetz, Schutz nur über Security Groups.
+- **Option B1:** Aufbau wie B2, aber mit einem verwalteten NAT Gateway statt NAT-Instanz.
+
+**Begründung:** Im privaten Subnetz sind DNS, LDAP und Runner aus dem Internet grundsätzlich nicht erreichbar. Zusammen mit den Security Groups haben wir damit zwei Schutzschichten statt einer. Ein NAT Gateway kommt nicht in Frage: Es kostet auch ohne Nutzung Geld und lässt sich nicht ausschalten, in acht Wochen wären das allein ca. 60 $, mehr als unser Budget von 50 $. Eine NAT-Instanz wird dagegen wie die anderen Server gestoppt, wenn wir nicht arbeiten, und kostet kaum mehr als Option A. Den höheren Aufwand (NAT-Instanz einrichten, SSH-Zugang über einen Jump Host) nehmen wir für die bessere Sicherheit in Kauf.
+
+**Bekannte Nachteile:** Die NAT-Instanz ist ein Single Point of Failure. Läuft sie nicht, haben die privaten Server keinen Internetzugang (z. B. keine Updates, keine Docker-Images für den Runner).
+
+**Kostenvergleich**
+
+Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 Stunden und werden danach gestoppt · Instanztypen vorläufig: ns1, ns2, ldap t3.micro, runner t3.small, gitlab t3.medium, NAT-Instanz t3.nano · 62 GB Speicher (plus 8 GB für die NAT-Instanz) · 20 GB Datenverkehr über NAT
+
+| Option | Geschätzte Kosten | Anteil am Budget |
+|---|---|---|
+| A – ein öffentliches Subnetz | ca. 19 $ | ca. 39 % |
+| **B2 – privates Subnetz mit NAT-Instanz** | **ca. 20 $** | **ca. 40 %** |
+| B1 – NAT Gateway (dauerhaft) | ca. 86 $ | über Budget |
+
+Preise laut AWS (EC2, EBS, öffentliche IPv4-Adressen, NAT Gateway), berechnet mit dem [AWS Pricing Calculator](https://calculator.aws/).
 ### 2.2 Adressbereiche
 > 📝 Issue **#2 – Define VPC and subnet CIDR**
 
