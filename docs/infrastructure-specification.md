@@ -26,6 +26,7 @@ Ziel des Projekts ist eine selbst gehostete CI/CD-Infrastruktur auf Linux-VMs in
 ### 1.1 Interner Domain-Name
 
 Als internen Domain-Namen verwenden wir `team02.internal`.
+
 **Begründung:** Die Endung `.internal` ist offiziell für private Netzwerke vorgesehen und wird im Internet nie vergeben. So kann unser Name nicht mit einer echten Website verwechselt werden. Der Name gilt nur innerhalb unserer VPC und wird nur von unseren eigenen DNS-Servern aufgelöst, deshalb müssen wir ihn nicht registrieren. `team02` zeigt, dass die Infrastruktur zu unserem Team gehört.
 
 ### 1.2 Überblick über die Server
@@ -115,11 +116,10 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 
 
 ### 2.3 IP- und Namensplan
-
 | Server | FQDN | Private IP | Subnetz | Öffentliche IP | Instanztyp (vorläufig) |
 |---|---|---|---|---|---|
-| NAT-Instanz | `nat.team02.internal` | `10.0.1.10` | öffentlich | ja | t3.nano |
-| GitLab | `gitlab.team02.internal` | `10.0.1.20` | öffentlich | ja (Details in 2.4) | t3.medium |
+| NAT-Instanz | `nat.team02.internal` | `10.0.1.10` | öffentlich | automatisch | t3.nano |
+| GitLab | `gitlab.team02.internal` | `10.0.1.20` | öffentlich | Elastic IP | t3.medium |
 | DNS primär | `ns1.team02.internal` | `10.0.2.10` | privat | nein | t3.micro |
 | DNS sekundär | `ns2.team02.internal` | `10.0.2.11` | privat | nein | t3.micro |
 | LDAP | `ldap.team02.internal` | `10.0.2.20` | privat | nein | t3.micro |
@@ -132,13 +132,36 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 - Die Instanztypen sind vorläufig und werden in Abschnitt 4.2 endgültig festgelegt und begründet.
 
 ### 2.4 Öffentliche IP / Elastic IP
-> 📝 Issue **#4 – Decide public IP / Elastic IP for GitLab**
 
-**Entscheidung:** _welche Server eine öffentliche IP bekommen, und ob GitLab eine Elastic IP erhält_
+| Server | Art der öffentlichen IP | Grund |
+|---|---|---|
+| GitLab | Elastic IP | stabile Adresse für Weboberfläche, Clone und Push |
+| NAT-Instanz | automatisch zugewiesen | nur für ausgehenden Verkehr, Adresse darf sich ändern |
+| ns1, ns2, LDAP, Runner | keine | liegen im privaten Subnetz |
 
-**Begründung:** _Erreichbarkeit aus dem Internet, stabile Adresse nach Neustarts, Kosten je öffentlicher IP_
+**Entscheidung:** GitLab erhält eine Elastic IP. Die NAT-Instanz bekommt eine automatisch zugewiesene öffentliche IP. Alle anderen Server haben keine öffentliche IP.
+
+**Begründung:** AWS Academy stoppt die Instanzen am Ende jeder Session. Ohne Elastic IP bekäme GitLab bei jedem Start eine neue Adresse. Dann müssten wir die GitLab-Konfiguration (`external_url`) und die Git-Adressen auf allen Laptops jedes Mal anpassen. Die NAT-Instanz braucht keine feste Adresse, weil sie nur Verbindungen nach außen aufbaut.
+
+**Kosten der öffentlichen IPs** (0,005 $ pro IP und Stunde, Annahmen wie in 2.1)
+
+| IP | Verrechnet | Rechnung | Kosten |
+|---|---|---|---|
+| Elastic IP (GitLab) | immer, auch wenn die Instanz gestoppt ist | 1.344 h × 0,005 $ | ca. 6,70 $ |
+| Automatische IP (NAT-Instanz) | nur während die Instanz läuft | 80 h × 0,005 $ | ca. 0,40 $ |
+| **Summe** | | | **ca. 7,10 $** |
+
+Mit der Elastic IP steigen die geschätzten Gesamtkosten von Option B2 von ca. 20 $ auf ca. 26 $ (ca. 52 % des Budgets). Diesen Aufpreis nehmen wir für eine stabile Adresse in Kauf.
+
+**Kostenoptimierung:**
+- Die Elastic IP wird erst beim Aufbau von GitLab in M2 angelegt und nach der Abschlusspräsentation sofort freigegeben.
+- Der LDAP-Server wird erst in M3 erstellt, weil LDAP in M2 nicht benötigt wird.
+- Instanzen laufen nur während der Arbeit und werden danach gestoppt.
+- Am Projektende werden alle Ressourcen (Instanzen, Festplatten, Elastic IP) gelöscht, damit keine weiteren Kosten entstehen.
+- Das verbrauchte Budget wird vor jedem Meilenstein im Learner Lab geprüft. Wird es knapp, geben wir die Elastic IP frei und passen die GitLab-Adresse auf den Laptops über die `hosts`-Datei an.
 
 ### 2.5 Routing und Namensauflösung
+
 > 📝 Issue **#5 – Describe routing**
 
 | Route Table | Subnetz | Ziel | Gateway |
