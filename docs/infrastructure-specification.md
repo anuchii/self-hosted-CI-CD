@@ -96,15 +96,22 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 
 Preise laut AWS (EC2, EBS, öffentliche IPv4-Adressen, NAT Gateway), berechnet mit dem [AWS Pricing Calculator](https://calculator.aws/).
 ### 2.2 Adressbereiche
-> 📝 Issue **#2 – Define VPC and subnet CIDR**
 
-| Element | CIDR | Bemerkung |
-|---|---|---|
-| VPC | _____ | |
-| Subnetz öffentlich | _____ | |
-| Subnetz privat _(nur Option B)_ | _____ | |
 
-**Region:** _____ · **Availability Zone:** _____
+| Element | CIDR | Adressen | Bemerkung |
+|---|---|---|---|
+| VPC | `10.0.0.0/16` | 10.0.0.0 – 10.0.255.255 | gesamter Adressraum |
+| Subnetz öffentlich | `10.0.1.0/24` | 10.0.1.0 – 10.0.1.255 | GitLab, NAT-Instanz |
+| Subnetz privat | `10.0.2.0/24` | 10.0.2.0 – 10.0.2.255 | ns1, ns2, LDAP, Runner |
+
+**Region:** us-east-1 (N. Virginia) · **Availability Zone:** us-east-1a (beide Subnetze)
+
+**Begründung:**
+- `10.0.0.0/16` ist ein privater Adressbereich und bietet genug Platz für spätere Erweiterungen.
+- Jedes Subnetz bekommt einen eigenen `/24`-Bereich. Die Bereiche überschneiden sich nicht, und die dritte Zahl zeigt sofort, in welchem Subnetz ein Server liegt (`10.0.1.x` = öffentlich, `10.0.2.x` = privat).
+- Ein `/24`-Subnetz hat 256 Adressen, davon reserviert AWS 5. Für unsere 6 Server ist das mehr als genug.
+- Beide Subnetze liegen in derselben Availability Zone. Ausfallsicherheit über mehrere Zonen ist im Projekt nicht gefordert. So bleibt der Aufbau einfach, und es entstehen keine Kosten für Datenverkehr zwischen Zonen.
+
 
 ### 2.3 IP- und Namensplan
 > 📝 Issue **#3 – Create IP and hostname plan** 
