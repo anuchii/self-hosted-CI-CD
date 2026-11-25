@@ -447,16 +447,15 @@ _z. B. welche Ressourcen der Runner für Build und Tests braucht und warum GitLa
 
 ## 7. Team, Rollen und Verantwortlichkeiten
 
-> 📝 **Aufgabe** · Issue **#___ – Team roles in specification** · Rollen werden mündlich geklärt
-
+passt das so für dich?
 | Bereich | Verantwortlich | Vertretung | Dienste und Aufgaben |
 |---|---|---|---|
-| 1 – Cloud, Netzwerk & Projektleitung | _____ | _____ | VPC, Subnetze, Routing, Security Groups, Instanzen, Kosten, Gesamtdokumentation, Abgaben |
-| 2 – DNS & LDAP | _____ | _____ | DNS Primary und Secondary, Zonen, LDAP |
-| 3 – GitLab-Server | _____ | _____ | GitLab, Container Registry, LDAP-Anbindung in GitLab |
-| 4 – Runner & CI/CD | _____ | _____ | GitLab Runner, Vorbereitung des Softwareprojekts, CI/CD-Pipeline |
+| 1 – Cloud & Netzwerk | Florea Anamaria | Jakumov Supjan | VPC, Subnetze, Routing, Security Groups, Instanzen, Kosten, Gesamtdokumentation, Abgaben |
+| 2 – DNS & LDAP | Kumar Sidhant |Kühlmann Roxana| DNS Primary und Secondary, Zonen, LDAP |
+| 3 – GitLab-Server | Jakumov Supjan| Florea Anamaria| GitLab, Container Registry, LDAP-Anbindung in GitLab |
+| 4 – Runner & CI/CD | Kühlmann Roxana| Kumar Sidhant | GitLab Runner, Vorbereitung des Softwareprojekts, CI/CD-Pipeline |
 
-**Projektleitung:** _____
+**Projektleitung: Florea Anamaria 
 
 
 ---
@@ -466,4 +465,4 @@ _z. B. welche Ressourcen der Runner für Build und Tests braucht und warum GitLa
 | Version | Datum | Änderung | Autor |
 |---|---|---|---|
 | 0.1 | 22.11.2026| Gerüst erstellt | Anamaria Florea  |
-| 1.0 | _____ | Abgabe M1 | _____ |
+| 1.0 | 25.11.2026| Abgabe M1 | Team 02 |
