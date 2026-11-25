@@ -3,7 +3,8 @@
 **Lehrveranstaltung:** DevOps and Cloud Computing (BIF-DUA-3, WS 2026)
 **Team:** Team 02
 **Mitglieder:** Kumar Sidhant, Kühlmann Roxana, Jakumov Supjan, Florea Anamaria
-**Version:** 0.1  **Stand:** 23.11.2026
+**Version:** 1.0  **Stand:** 25.11.2026
+
 ---
 
 ## Inhaltsverzeichnis
@@ -97,6 +98,8 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 | **B2 – privates Subnetz mit NAT-Instanz** | **ca. 20 $** | **ca. 40 %** |
 | B1 – NAT Gateway (dauerhaft) | ca. 86 $ | über Budget |
 
+Vorläufige Schätzung; die endgültige Kostenschätzung steht in Abschnitt 4.2.
+
 ### 2.2 Adressbereiche
 
 
@@ -131,6 +134,7 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 - Die ersten vier Adressen und die letzte Adresse jedes Subnetzes reserviert AWS (zB `10.0.1.0`–`10.0.1.3` und `10.0.1.255`). Diese verwenden wir nicht.
 - Die Instanztypen sind vorläufig und werden in Abschnitt 4.2 endgültig festgelegt und begründet.
 
+
 ### 2.4 Öffentliche IP / Elastic IP
 
 | Server | Art der öffentlichen IP | Grund |
@@ -144,6 +148,7 @@ Annahmen: Region us-east-1 · 8 Wochen Projektdauer · Instanzen laufen ca. 80 S
 **Begründung:** AWS Academy stoppt die Instanzen am Ende jeder Session. Ohne Elastic IP bekäme GitLab bei jedem Start eine neue Adresse. Dann müssten wir die GitLab-Konfiguration (`external_url`) und die Git-Adressen auf allen Laptops jedes Mal anpassen. Die NAT-Instanz braucht keine feste Adresse, weil sie nur Verbindungen nach außen aufbaut.
 
 **Kosten der öffentlichen IPs** (0,005 $ pro IP und Stunde, Annahmen wie in 2.1)
+
 
 | IP | Verrechnet | Rechnung | Kosten |
 |---|---|---|---|
@@ -280,6 +285,8 @@ Das Diagramm zeigt die VPC `10.0.0.0/16` in der Region us-east-1 mit dem öffent
 
 **Begründung:** Der Runner baut die Verbindung zu GitLab selbst auf (ausgehend) und braucht deshalb keine weiteren eingehenden Ports.
 
+--- 
+
 ## 4. Dienste, Betriebssystem und Software
 
 ### 4.1 Betriebssystem 
@@ -396,7 +403,7 @@ Wir nutzen nur das kostenlose Basic Monitoring von CloudWatch. Es ist für alle 
 **Aufbau:**
 - Der Runner fragt regelmäßig bei GitLab nach neuen Jobs. Er baut die Verbindung selbst auf, deshalb braucht er keine offenen Ports (siehe `sg-runner` in 3.2).
 - **Docker Executor:** Jeder Job läuft in einem eigenen, frischen Container mit dem Image, das in der Pipeline angegeben ist (zB ein Maven-Image für Build und Tests). Nach dem Job wird der Container gelöscht.
-- **Docker-Images bauen:** Für den Build-Job startet der Runner zusätzlich einen Docker-in-Docker-Container (`docker:dind`). Darin wird das Image gebaut und anschließend in die Registry von GitLab hochgeladen. Damit das funktioniert, läuft der Runner im privileged-Modus und die Registry `gitlab.team02.internal:5050` ist als insecure registry eingetragen.
+- **Docker-Images bauen:** Für den Build-Job startet der Runner zusätzlich einen Docker-in-Docker-Container (`docker:dind`). Darin wird das Image gebaut und anschließend in die Registry von GitLab hochgeladen. Damit das funktioniert, läuft der Runner im privileged-Modus. Weil das Image im dind-Container gebaut und hochgeladen wird, bekommt der dind-Service die Registry beim Start als insecure registry mitgegeben (`--insecure-registry=gitlab.team02.internal:5050` in der `.gitlab-ci.yml`).
 - **Registrierung:** Der Runner wird in der GitLab-Oberfläche angelegt. Mit dem dort erzeugten Token wird er auf dem Server mit `gitlab-runner register` und der Adresse `http://gitlab.team02.internal` registriert.
 
 **Entscheidung:** GitLab Runner mit Docker Executor, Docker-Images werden mit Docker-in-Docker gebaut.
@@ -493,33 +500,44 @@ Jeder Test hat eine Kennung (N = Netzwerk, D = DNS, L = LDAP, G = GitLab, R = Ru
 
 ## 6. Softwareprojekt
 
-> 📝 **Aufgabe** · Issue **#12 – GitLab Runner software and software project** 
-
 ### 6.1 Beschreibung
+Als Softwareprojekt verwenden wir die Media Ratings Platform (MRP) aus der Lehrveranstaltung Software Engineering 1 (SWEN1).
+MRP ist ein eigenständiger REST-Server in Java, über den Benutzer Medien (Filme, Serien, Spiele) anlegen, mit 1–5 Sternen bewerten, als Favoriten markieren und Empfehlungen erhalten. 
+Der Server ist in Schichten aufgebaut (HTTP/Controller, Service mit der Geschäftslogik, Repository für den Datenbankzugriff) und verwendet kein Framework wie Spring, sondern einen schlanken HTTP-Server. 
+Die Anmeldung erfolgt über einen Token (`Authorization: Bearer <token>`), Anfragen und Antworten sind JSON. Alle Daten werden in einer PostgreSQL-Datenbank gespeichert, die in Docker läuft.
 
-_Name des Projekts, Zweck, Aufbau (zB Schichten), Herkunft (zB aus SWEN1). 3–5 Sätze._
+**Begründung:** Das Projekt erfüllt die Anforderungen der Angabe an ein nicht-triviales Projekt: Es besteht aus vielen Quelldateien in mehreren Schichten und bindet externe Bibliotheken über Maven ein. 
+Laut SWEN1-Angabe sind mindestens 20 Unit-Tests gefordert, damit ist der Test-Stage der Pipeline gut gefüllt. 
+Außerdem kennt das Team den Code bereits, und die Pipeline nützt uns auch direkt für die SWEN1-Abgaben.
 
 ### 6.2 Build- und Testanforderungen
-
 | Eigenschaft | Wert |
 |---|---|
-| Sprache und Version | _____ |
-| Build-Tool | _____ |
-| Externe Abhängigkeiten | _____ |
-| Statische Code-Analyse (Linter) | _____ |
-| Unit-Tests | _Framework, Anzahl, laufen sie ohne Datenbank?_ |
-| Docker-Image | _____ |
-| Laufzeitabhängigkeiten | _____ |
+| Sprache und Version | Java 25 (`maven.compiler.release` = 25) |
+| Build-Tool | Apache Maven 3.9 (`pom.xml`, Paketierung als JAR) |
+| Externe Abhängigkeiten | Lombok 1.18.46 (nur beim Kompilieren), JUnit 5.11 (nur für Tests); geplant: PostgreSQL-JDBC-Treiber, Jackson (JSON), Mockito (Tests). Alle werden beim Build von Maven Central geladen |
+| Statische Code-Analyse (Linter) | Checkstyle über das `maven-checkstyle-plugin` (Aufruf `mvn checkstyle:check`) |
+| Unit-Tests | JUnit 5 mit Mockito, mindestens 20 Tests (Vorgabe SWEN1), u. a. für Autorisierung, Filter, Empfehlungen und Geschäftsregeln. Die Repositories werden gemockt, die Tests laufen daher **ohne Datenbank**. Aufruf: `mvn test` |
+| Docker-Image | Mehrstufiges `Dockerfile`: Build-Stufe mit `maven:3.9-eclipse-temurin-25`, Laufzeit-Stufe nur mit `eclipse-temurin:25-jre` und dem fertigen JAR. Der HTTP-Port wird mit `EXPOSE` freigegeben |
+| Laufzeitabhängigkeiten | Java 25 Runtime (im Image enthalten) und eine erreichbare PostgreSQL-Datenbank. Die Verbindungsdaten werden beim Start über Umgebungsvariablen übergeben |
+
+**Anpassungen am Projekt für die Pipeline:**
+- Das `maven-checkstyle-plugin` wird in der `pom.xml` ergänzt, damit der Lint-Stage einen eigenen Befehl hat.
+- Damit das JAR im Container mit `java -jar` startet, braucht es eine Main-Class im Manifest und alle Abhängigkeiten im JAR. Dafür ergänzen wir das `maven-shade-plugin`.
+- Die Datenbank-Verbindung (Host, Benutzer, Passwort) wird aus Umgebungsvariablen gelesen statt fest im Code zu stehen. So läuft dasselbe Image lokal und auf jedem anderen Server.
 
 ### 6.3 Bedeutung für die Infrastruktur
 
-_zB welche Ressourcen der Runner für Build und Tests braucht und warum GitLab eine Container Registry benötigt._
+- **Runner:** Maven-Build, Tests und Docker-Build in Docker-in-Docker brauchen viel Arbeitsspeicher. Deshalb hat der Runner 4 GiB RAM (t3.medium, siehe 4.2) und 30 GiB Festplatte für die Images (Maven, Temurin, `docker:dind`).
+- **Internetzugang über die NAT-Instanz:** Bei jedem Build lädt Maven die Abhängigkeiten von Maven Central, und der Runner lädt die Job-Images von Docker Hub. Beides läuft über HTTPS (Port 443) durch die NAT-Instanz (siehe `sg-nat` in 3.2). Um Datenverkehr und Zeit zu sparen, wird das lokale Maven-Verzeichnis (`.m2/repository`) in der Pipeline als Cache gespeichert.
+- **Keine Datenbank in der Pipeline:** Weil die Unit-Tests die Repositories mocken, braucht die Pipeline keinen PostgreSQL-Server. Das hält die Pipeline einfach und schnell.
+- **Container Registry:** Das Ergebnis der Pipeline ist ein Docker-Image, kein einzelnes JAR. Deshalb braucht GitLab eine Container Registry. Der Deploy-Stage lädt das Image dorthin hoch: aus dem `develop`-Branch mit dem Tag `develop`, aus dem `main`-Branch mit dem Tag `latest`.
+- **Geplante Pipeline-Stages:** `lint` (Checkstyle) → `test` (`mvn test`) → `build` (JAR und Docker-Image) → `deploy` (Push in die Registry).
 
 ---
 
 ## 7. Team, Rollen und Verantwortlichkeiten
 
-passt das so für dich?
 | Bereich | Verantwortlich | Vertretung | Dienste und Aufgaben |
 |---|---|---|---|
 | 1 – Cloud & Netzwerk | Florea Anamaria | Jakumov Supjan | VPC, Subnetze, Routing, Security Groups, Instanzen, Kosten, Gesamtdokumentation, Abgaben |
@@ -527,8 +545,7 @@ passt das so für dich?
 | 3 – GitLab-Server | Jakumov Supjan| Florea Anamaria| GitLab, Container Registry, LDAP-Anbindung in GitLab |
 | 4 – Runner & CI/CD | Kühlmann Roxana| Kumar Sidhant | GitLab Runner, Vorbereitung des Softwareprojekts, CI/CD-Pipeline |
 
-**Projektleitung: Florea Anamaria 
-
+**Projektleitung:** Florea Anamaria 
 
 ---
 
